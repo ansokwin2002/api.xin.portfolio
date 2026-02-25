@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\ContactController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Route;
 // Public routes
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+Route::post('/contacts', [ContactController::class, 'store']);
 
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -26,6 +28,14 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Contact management (protected)
+    Route::controller(ContactController::class)->group(function () {
+        Route::get('/contacts', 'index');
+        Route::get('/contacts/{id}', 'show');
+        Route::put('/contacts/{id}', 'update');
+        Route::delete('/contacts/{id}', 'destroy');
+    });
 
     // Example of another protected route
     Route::get('/dashboard', function () {
