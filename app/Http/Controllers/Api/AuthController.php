@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -46,18 +48,49 @@ class AuthController extends Controller
             'password' => 'required',
         ]);
 
+        $throttleKey = Str::transliterate(Str::lower($request->email)) . '|' . $request->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+            $seconds = RateLimiter::availableIn($throttleKey);
+            return response()->json([
+                'message' => "Too many failed login attempts. You have exceeded the limit of 3 tries. Please try again in {$seconds} seconds."
+            ], 429);
+        }
+
         $user = User::where('email', $request->email)->first();
 
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['The provided credentials are incorrect.'],
-            ]);
+        if (! $user) {
+            RateLimiter::hit($throttleKey, 60); // 1 minute decay
+            if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+                $seconds = RateLimiter::availableIn($throttleKey);
+                return response()->json([
+                    'message' => "Too many failed login attempts. You have exceeded the limit of 3 tries. Please try again in {$seconds} seconds."
+                ], 429);
+            }
+            return response()->json([
+                'message' => 'The provided email address is incorrect.'
+            ], 401);
         }
+
+        if (! Hash::check($request->password, $user->password)) {
+            RateLimiter::hit($throttleKey, 60); // 1 minute decay
+            if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+                $seconds = RateLimiter::availableIn($throttleKey);
+                return response()->json([
+                    'message' => "Too many failed login attempts. You have exceeded the limit of 3 tries. Please try again in {$seconds} seconds."
+                ], 429);
+            }
+            return response()->json([
+                'message' => 'The provided password is incorrect.'
+            ], 401);
+        }
+
+        RateLimiter::clear($throttleKey);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'message' => 'User Login successful',
+            'message' => 'Login successful',
             'access_token' => $token,
             'token_type' => 'Bearer',
         ]);
